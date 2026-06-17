@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Numerics;
 
 namespace ZombieDefence; 
 public struct Zombie() {
@@ -13,12 +14,6 @@ public struct Zombie() {
 
 public partial class GameForm : Form {
     public static GameForm instance;
-
-    public static Dictionary<int, int> pathfindingCost = new Dictionary<int, int>() {
-        { -2, 1 }, { -1, 1 }, { 0, 1 }, { 1, 1 },
-        { 2, 3 }, { 3, 4 }, { 4, 5 },
-        { 5, 2 }
-    };
 
     public static bool OnBoard(Point tile) =>
         tile.X >= 0 && tile.X < hTiles &&
@@ -112,7 +107,7 @@ public partial class GameForm : Form {
 
     const int hTiles = 32;
     const int vTiles = 24;
-    static int tileSize;
+    static float tileSize;
     const int buildLimit = 24;
     const int zombieLimit = 26;
     static Point[] targets = {
@@ -122,7 +117,7 @@ public partial class GameForm : Form {
         new(1, 12), new(1, 13), new(1, 14)
     };
     static int[,] tiles;
-    static Rectangle boardArea;
+    static RectangleF boardArea;
     static List<Zombie> zombies = new List<Zombie>();
     static bool mapUpdated = false;
 
@@ -172,8 +167,8 @@ public partial class GameForm : Form {
         InitializeComponent();
 
 
-        tileSize = Math.Min(ClientSize.Width / hTiles, ClientSize.Height / vTiles);
-        boardArea = new Rectangle(
+        tileSize = MathF.Min((float) ClientSize.Width / hTiles, (float) ClientSize.Height / vTiles);
+        boardArea = new RectangleF(
             (ClientSize.Width - hTiles * tileSize) / 2,
             (ClientSize.Height - vTiles * tileSize) / 2,
             hTiles * tileSize,
