@@ -135,15 +135,14 @@ public partial class GameForm : Form {
             // Logic Start
 
             lock (zombies) {
-                List<Point> occupied = new List<Point>();
+                HashSet<Point> occupied = new HashSet<Point>();
                 List<int> forRemoval = new List<int>();
                 for (int i = 0; i < zombies.Count; i++) {
                     Zombie zombie = zombies[i];
                     if (mapUpdated) zombie.path = Pathfind(zombie.position);
                     if (zombie.path.Count > 0) {
-                        if (!occupied.Contains(zombie.path.Peek())) {
+                        if (occupied.Add(zombie.path.Peek())) {
                             zombie.position = zombie.path.Pop();
-                            occupied.Add(zombie.position);
                         }
                     } else {
                         forRemoval.Add(i);
@@ -154,8 +153,6 @@ public partial class GameForm : Form {
                 forRemoval.Reverse();
                 foreach (int i in forRemoval)
                     zombies.RemoveAt(i);
-                if (zombies.Count > 0 || forRemoval.Count > 0)
-                    instance.Invoke(instance.Invalidate);
             }
             mapUpdated = false;
 
