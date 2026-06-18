@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Numerics;
 
 namespace ZombieDefence; 
 public struct Zombie() {
@@ -14,10 +15,10 @@ public struct Zombie() {
 public partial class GameForm : Form {
     public static GameForm instance;
 
-    public static Dictionary<int, int> pathfindingCost = new Dictionary<int, int>() {
-        { -2, 1 }, { -1, 1 }, { 0, 1 }, { 1, 1 },
-        { 2, 3 }, { 3, 4 }, { 4, 5 },
-        { 5, 2 }
+    public static Dictionary<int, int> defaultTileHealth = new Dictionary<int, int>() {
+        { -2, 0 }, { -1, 0 }, { 0, 0 }, { 1, 0 },
+        { 2, 4 }, { 3, 6 },
+        { 4, 2 }
     };
 
     public static bool OnBoard(Point tile) =>
@@ -71,7 +72,7 @@ public partial class GameForm : Form {
                 return AssembleCheapestPath(current, cheapestPaths);
             foreach (Point neighbour in GetNeighbours(current)) {
                 int tile = tiles[neighbour.X, neighbour.Y];
-                int cost = smallestCost[current] + pathfindingCost[tile];
+                int cost = smallestCost[current] + 1 + tileHealths[neighbour.X, neighbour.Y];
                 if (!smallestCost.ContainsKey(neighbour) ||
                     cost < smallestCost[neighbour]) {
                     smallestCost[neighbour] = cost;
@@ -86,35 +87,11 @@ public partial class GameForm : Form {
 
     public static Random random = new Random();
 
-    Dictionary<int, Action<Graphics, int, int, int>> tileDrawFuncs = new Dictionary<int, Action<Graphics, int, int, int>>() {
-        { -2, (graphics, x, y, size) => {
-            graphics.FillRectangle(
-                new SolidBrush(Color.FromArgb(127, 255, 0, 0)),
-                x, y, size, size);
-            graphics.DrawRectangle(
-                Pens.Black,
-                x, y, size, size);
-        } },
-        { -1, (graphics, x, y, size) => {
-            graphics.FillRectangle(
-                new SolidBrush(Color.FromArgb(63, 0, 0, 0)),
-                x, y, size, size);
-            graphics.DrawRectangle(
-                Pens.Black,
-                x, y, size, size);
-        } },
-        { 0, (Graphics graphics, int x, int y, int size) => {
-            graphics.DrawRectangle(
-                Pens.Black,
-                x, y, size, size);
-        } }
-    };
-
-    const int hTiles = 32;
-    const int vTiles = 24;
-    static int tileSize;
-    const int buildLimit = 24;
-    const int zombieLimit = 26;
+    const int hTiles = 24;
+    const int vTiles = 16;
+    static float tileSize;
+    const int buildLimit = 16;
+    const int zombieLimit = 18;
     static Point[] targets = {
         new(0, 9), new(0, 10), new(0, 11),
         new(0, 12), new(0, 13), new(0, 14),
@@ -122,63 +99,69 @@ public partial class GameForm : Form {
         new(1, 12), new(1, 13), new(1, 14)
     };
     static int[,] tiles;
-    static Rectangle boardArea;
+    static int[,] tileHealths;
+    static Vector2 margin = new Vector2(5, 5);
+    static Vector2 padding;
+    static RectangleF gameArea;
+    static RectangleF boardArea;
     static List<Zombie> zombies = new List<Zombie>();
     static bool mapUpdated = false;
+    static int selectedTile = 2;
 
-    Thread logicThread = new Thread(() => {
+    Thread logicThread = new Thread(RunLogic);
+
+    public static void RunLogic() {
         Stopwatch stopwatch = new Stopwatch();
         const int tickTime = 500;
-        while (true) {
-            stopwatch.Start();
+        try {
+            while (true) {
+                stopwatch.Start();
 
-            // Logic Start
+                // Logic Start
 
-            lock (zombies) {
-                HashSet<Point> occupied = new HashSet<Point>();
                 List<int> forRemoval = new List<int>();
-                for (int i = 0; i < zombies.Count; i++) {
-                    Zombie zombie = zombies[i];
-                    if (mapUpdated) zombie.path = Pathfind(zombie.position);
-                    if (zombie.path.Count > 0) {
-                        if (occupied.Add(zombie.path.Peek())) {
-                            zombie.position = zombie.path.Pop();
+                lock (zombies) {
+                    HashSet<Point> occupied = new HashSet<Point>();
+                    for (int i = 0; i < zombies.Count; i++) {
+                        Zombie zombie = zombies[i];
+                        if (mapUpdated) zombie.path = Pathfind(zombie.position);
+                        if (zombie.path.Count > 0) {
+                            if (occupied.Add(zombie.path.Peek())) {
+                                zombie.position = zombie.path.Pop();
+                            } else occupied.Add(zombie.position);
+                        } else {
+                            forRemoval.Add(i);
+                            // deal damage
                         }
-                    } else {
-                        forRemoval.Add(i);
-                        // deal damage
+                        zombies[i] = zombie;
                     }
-                    zombies[i] = zombie;
+                    forRemoval.Reverse();
+                    foreach (int i in forRemoval)
+                        zombies.RemoveAt(i);
                 }
-                forRemoval.Reverse();
-                foreach (int i in forRemoval)
-                    zombies.RemoveAt(i);
+                if (forRemoval.Count > 0 || zombies.Count > 0)
+                    instance.Invoke(() => instance.Invalidate());
+                mapUpdated = false;
+
+                // Logic End
+
+                stopwatch.Stop();
+                int elapsedTime = (int)stopwatch.ElapsedMilliseconds;
+
+                int timeToSleep = tickTime - elapsedTime;
+                if (timeToSleep > 0) Thread.Sleep(timeToSleep);
+                //else Console.Error.WriteLine($"Falling behind, tick took {elapsedTime}ms, current tick late {-timeToSleep}ms");
+                stopwatch.Reset();
             }
-            mapUpdated = false;
+        } catch (ThreadInterruptedException) {
 
-            // Logic End
-
-            stopwatch.Stop();
-            int elapsedTime = (int)stopwatch.ElapsedMilliseconds;
-
-            int timeToSleep = tickTime - elapsedTime;
-            if (timeToSleep > 0) Thread.Sleep(timeToSleep);
-            else Console.Error.WriteLine($"Falling behind, tick took {elapsedTime}ms, current tick late {-timeToSleep}ms");
-            stopwatch.Reset();
         }
-    });
+    }
 
     public GameForm() {
         InitializeComponent();
 
-
-        tileSize = Math.Min(ClientSize.Width / hTiles, ClientSize.Height / vTiles);
-        boardArea = new Rectangle(
-            (ClientSize.Width - hTiles * tileSize) / 2,
-            (ClientSize.Height - vTiles * tileSize) / 2,
-            hTiles * tileSize,
-            vTiles * tileSize
-        );
+        CalculateGraphics();
 
         tiles = new int[hTiles, vTiles];
         for (int x = 0; x < hTiles; x++) {
@@ -196,7 +179,29 @@ public partial class GameForm : Form {
             tiles[target.X, target.Y] = 1;
         }
 
+        tileHealths = new int[hTiles, vTiles];
+
         instance = this;
+    }
+
+    private void CalculateGraphics() {
+        gameArea = new RectangleF(
+            margin.X,
+            margin.Y,
+            ClientSize.Width - margin.X * 2,
+            ClientSize.Height - margin.Y * 2
+        );
+        tileSize = MathF.Min(
+            gameArea.Width / (hTiles + 3),
+            gameArea.Height / vTiles
+        );
+        boardArea = new RectangleF(
+            gameArea.X + 3 * tileSize + (gameArea.Width - (hTiles + 3) * tileSize) / 2,
+            gameArea.Y + (gameArea.Height - vTiles * tileSize) / 2,
+            hTiles * tileSize,
+            vTiles * tileSize
+        );
+        padding = new Vector2(3 * tileSize, tileSize);
     }
 
     private void GameForm_Load(object sender, EventArgs e) {
@@ -204,37 +209,90 @@ public partial class GameForm : Form {
         logicThread.Start();
     }
 
+    public void DrawTile(int tile, float x, float y, float size, Graphics graphics) {
+        switch (tile) {
+            case -2:
+                DrawTile(0, x, y, size, graphics);
+                graphics.FillRectangle(
+                    new SolidBrush(Color.FromArgb(127, 0, 0, 0)),
+                    x, y, size, size);
+                graphics.DrawRectangle(
+                    Pens.Black,
+                    x, y, size, size);
+                break;
+            case -1:
+                DrawTile(0, x, y, size, graphics);
+                graphics.FillRectangle(
+                    new SolidBrush(Color.FromArgb(63, 0, 0, 0)),
+                    x, y, size, size);
+                graphics.DrawRectangle(
+                    Pens.Black,
+                    x, y, size, size);
+                break;
+            case 0:
+                graphics.FillRectangle(
+                    Brushes.LawnGreen,
+                    x, y, size, size);
+                graphics.DrawRectangle(
+                    Pens.DarkGreen,
+                    x, y, size, size);
+                break;
+            case 2:
+                graphics.FillRectangle(
+                    new SolidBrush(Color.FromArgb(188, 74, 60)),
+                    x, y, size, size);
+                graphics.DrawRectangle(
+                    new Pen(Color.FromArgb(89, 45, 29)),
+                    x, y, size, size);
+                break;
+            case 3:
+                graphics.FillRectangle(
+                    new SolidBrush(Color.FromArgb(45, 50, 50)),
+                    x, y, size, size);
+                graphics.DrawRectangle(
+                    Pens.Black,
+                    x, y, size, size);
+                break;
+            default:
+                graphics.DrawLine(
+                    Pens.Red,
+                    x,
+                    y,
+                    x + tileSize,
+                    y + tileSize
+                );
+                graphics.DrawLine(
+                    Pens.Red,
+                    x,
+                    y + tileSize,
+                    x + tileSize,
+                    y
+                );
+                break;
+        }
+    }
+
     private void Form1_Paint(object sender, PaintEventArgs e) {
         Graphics graphics = e.Graphics;
 
+        graphics.DrawRectangle(new Pen(Color.Black, 2), gameArea);
+        graphics.DrawRectangle(new Pen(Color.Black, 2), boardArea);
+
         for (int x = 0; x < hTiles; x++) {
             for (int y = 0; y < vTiles; y++) {
-
-                if (tileDrawFuncs.TryGetValue(tiles[x, y], out var drawFunction)) {
-                    drawFunction.Invoke(
-                        graphics,
-                        boardArea.X + x * tileSize,
-                        boardArea.Y + y * tileSize,
-                        tileSize
-                    );
-                } else {
-                    graphics.DrawLine(
-                        Pens.Red,
-                        boardArea.X + x * tileSize,
-                        boardArea.Y + y * tileSize,
-                        boardArea.X + x * tileSize + tileSize,
-                        boardArea.Y + y * tileSize + tileSize
-                    );
-                    graphics.DrawLine(
-                        Pens.Red,
-                        boardArea.X + x * tileSize,
-                        boardArea.Y + y * tileSize + tileSize,
-                        boardArea.X + x * tileSize + tileSize,
-                        boardArea.Y + y * tileSize
-                    );
-                }
+                DrawTile(
+                    tiles[x, y],
+                    boardArea.X + x * tileSize,
+                    boardArea.Y + y * tileSize,
+                    tileSize,
+                    graphics
+                );
             }
         }
+
+
+        DrawTile(2, boardArea.X - 2 * tileSize, boardArea.Y + 6 * tileSize, tileSize, graphics);
+        DrawTile(3, boardArea.X - 2 * tileSize, boardArea.Y + 7 * tileSize, tileSize, graphics);
 
         lock (zombies) {
             foreach (var zombie in zombies) {
@@ -246,7 +304,7 @@ public partial class GameForm : Form {
                     tileSize - 1
                 );
                 graphics.DrawEllipse(
-                    Pens.DarkOliveGreen,
+                    Pens.Black,
                     boardArea.X + zombie.position.X * tileSize + 1,
                     boardArea.Y + zombie.position.Y * tileSize + 1,
                     tileSize - 2,
@@ -257,13 +315,7 @@ public partial class GameForm : Form {
     }
 
     private void Form1_Resize(object sender, EventArgs e) {
-        tileSize = Math.Min(ClientSize.Width / hTiles, ClientSize.Height / vTiles);
-        boardArea = new Rectangle(
-            (ClientSize.Width - hTiles * tileSize) / 2,
-            (ClientSize.Height - vTiles * tileSize) / 2,
-            hTiles * tileSize,
-            vTiles * tileSize
-        );
+        CalculateGraphics();
         Invalidate();
     }
 
@@ -279,5 +331,37 @@ public partial class GameForm : Form {
     }
 
     private void GameForm_FormClosing(object sender, FormClosingEventArgs e) {
+        zombieTimer.Stop();
+        logicThread.Interrupt();
+    }
+
+    private Point MouseToTile(PointF mouseLocation) {
+        mouseLocation.X -= boardArea.X;
+        mouseLocation.Y -= boardArea.Y;
+        return new Point((int)MathF.Floor(mouseLocation.X / tileSize), (int) MathF.Floor(mouseLocation.Y / tileSize));
+    }
+
+    private void GameForm_MouseClick(object sender, MouseEventArgs e) {
+        if (e.Button != MouseButtons.Left) return;
+        PointF relativeClick = e.Location;
+        relativeClick.X -= boardArea.X;
+        relativeClick.Y -= boardArea.Y;
+        Point clickedTile = MouseToTile(e.Location);
+        //MessageBox.Show(
+        //    $"Clicked: {e.X}, {e.Y}\n" +
+        //    $"Clicked Relative: {relativeClick.X}, {relativeClick.Y}\n" +
+        //    $"Clicked tile: {clickedTile.X}, {clickedTile.Y}\n" +
+        //    $"Tile size: {tileSize}");
+        if (clickedTile.X == -2) {
+            if (clickedTile.Y == 6) selectedTile = 2;
+            else if (clickedTile.Y == 7) selectedTile = 3;
+            else if (clickedTile.Y == 9) selectedTile = 4;
+        } else if (OnBoard(clickedTile)) {
+            int tile = tiles[clickedTile.X, clickedTile.Y];
+            if (tile < 0 || tile == 1) return;
+            tiles[clickedTile.X, clickedTile.Y] = selectedTile;
+            mapUpdated = true;
+            Invalidate();
+        }
     }
 }

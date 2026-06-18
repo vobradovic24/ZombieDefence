@@ -33,7 +33,7 @@
             // 
             // zombieTimer
             // 
-            zombieTimer.Interval = 500;
+            zombieTimer.Interval = 1000;
             zombieTimer.Tick += zombieTimer_Tick;
             // 
             // GameForm
@@ -47,6 +47,7 @@
             FormClosing += GameForm_FormClosing;
             Load += GameForm_Load;
             Paint += Form1_Paint;
+            MouseClick += GameForm_MouseClick;
             Resize += Form1_Resize;
             ResumeLayout(false);
         }
