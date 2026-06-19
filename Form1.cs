@@ -124,7 +124,7 @@ public partial class GameForm : Form {
             foreach (Point neighbour in GetValidNeighbours(current)) {
                 Tile tile = tiles[neighbour.X, neighbour.Y];
                 int cost = smallestCost[current] + 1 + tile.Health;
-                if (occupied.Contains(neighbour)) cost += 10000;
+                if (occupied.Contains(neighbour)) cost += 10;
                 if (!smallestCost.ContainsKey(neighbour) ||
                     cost < smallestCost[neighbour]) {
                     smallestCost[neighbour] = cost;
@@ -240,7 +240,7 @@ public partial class GameForm : Form {
         } catch (ThreadInterruptedException) {
 
         } catch (OperationCanceledException) {
-            MessageBox.Show("The zombies hath eaten thy brains! Game over.");
+            MessageBox.Show("Game over.");
             instance.BeginInvoke(() => {
                 instance.zombieTimer.Stop();
                 logicThread.Interrupt();
@@ -359,6 +359,15 @@ public partial class GameForm : Form {
                 graphics.DrawRectangle(
                     new Pen(ApplyOpacity(Color.DarkGreen, opacity)),
                     x, y, size, size);
+                break;
+            case TileType.Target:
+                DrawTile(0, x, y, size, 1, 0, graphics);
+                graphics.DrawRectangle(
+                    new Pen(ApplyOpacity(Color.Orange, opacity), 0.3f * size),
+                    x + 0.15f * size,
+                    y + 0.15f * size,
+                    size * 0.7f,
+                    size * 0.7f);
                 break;
             case TileType.BrickWall:
                 DrawTile(0, x, y, size, 1, 0, graphics);
@@ -482,7 +491,7 @@ public partial class GameForm : Form {
         lock (zombies) {
             foreach (var zombie in zombies) {
                 graphics.FillEllipse(
-                    Brushes.DarkGreen,
+                    new SolidBrush(ApplyOpacity(Color.DarkGreen, zombie.health / 8f)),
                     boardArea.X + zombie.position.X * tileSize + 1,
                     boardArea.Y + zombie.position.Y * tileSize + 1,
                     tileSize - 1,
