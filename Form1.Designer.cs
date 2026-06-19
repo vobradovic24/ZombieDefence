@@ -44,10 +44,11 @@
             DoubleBuffered = true;
             Name = "GameForm";
             Text = "Form1";
-            FormClosing += GameForm_FormClosing;
             Load += GameForm_Load;
+            FormClosing += GameForm_FormClosing;
             Paint += Form1_Paint;
             MouseClick += GameForm_MouseClick;
+            MouseMove += GameForm_MouseMove;
             Resize += Form1_Resize;
             ResumeLayout(false);
         }
